@@ -106,4 +106,4 @@ document.querySelector('.ace_editor').addEventListener('paste', function(e){
     } catch (e) {
         console.log(e);
     }}
-                                                      );
+);
