@@ -10,6 +10,8 @@
 // @grant        none
 // ==/UserScript==
 
+// MODIFIED BY SLOAN NIETERT - "assets" folder now only created upon pasting image for first time
+
 // Parse images from the clipboard
 function retrieveImageFromClipboardAsBlob(pasteEvent, callback){
     if(pasteEvent.clipboardData == false){
@@ -38,9 +40,26 @@ function retrieveImageFromClipboardAsBlob(pasteEvent, callback){
     }
 }
 
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const assetsFolderExists = () => _ide.fileTreeManager.findEntityByPath("assets") != null;
+
+async function waitForAssetsFolder(initialTimeout, increment) {
+    if (assetsFolderExists()) return;
+    _ide.fileTreeManager.createFolder("assets","/");
+
+    let timeout = initialTimeout;
+    while(true) {
+        console.log("Assets folder not yet created...")
+        await delay(timeout);
+        timeout += increment;
+        if(assetsFolderExists()) return;
+    }
+}
+
 // Upload the image blob
-function uploadImage(imageBlob,hash){
+async function uploadImage(imageBlob,hash){
     try{
+        await waitForAssetsFolder(100,200);
         var xhr = new XMLHttpRequest();
         var url = document.location.pathname + "/upload?folder_id=" + _ide.fileTreeManager.findEntityByPath("assets").id + "&_csrf=" + csrfToken;
         let formData = new FormData();
@@ -60,39 +79,6 @@ function uploadImage(imageBlob,hash){
     }
 };
 
-function checkAndCreateAssetsFolder(){
-    if (_ide.fileTreeManager.findEntityByPath("assets")){
-        console.log("Assets folder exists...")
-    }
-    else {
-        console.log("Assets folder does not exist...")
-        try {
-            _ide.fileTreeManager.createFolder("assets","/");
-        } catch(e) {
-            console.log(e);
-        }
-    }
-}
-
-// Editor Startup
-(function(e) {
-    try{
-        'use strict';
-        // poll until editor is loaded
-        const retry = setInterval(() => {
-            console.log("Polling...")
-            if (window._debug_editors === undefined) return
-            clearInterval(retry)
-            // get current editor instance
-            const editor = window._debug_editors[window._debug_editors.length -1]
-            // Create assets folder
-            checkAndCreateAssetsFolder();
-        }, 1000)
-        } catch(e) {
-            console.log(e);
-        }
-})();
-
 // Listen for paste events
 document.querySelector('.ace_editor').addEventListener('paste', function(e){
     try {
@@ -100,13 +86,12 @@ document.querySelector('.ace_editor').addEventListener('paste', function(e){
         retrieveImageFromClipboardAsBlob(e, function(imageBlob){
             // Image?
             if(imageBlob){
-                checkAndCreateAssetsFolder();
                 var reader = new FileReader();
                 reader.readAsBinaryString(imageBlob);
-                reader.onloadend = function () {
-                    var  hash = CryptoJS.SHA256(reader.result).toString().substring(0,8);
-                    console.log("Uploading image...")
-                    uploadImage(imageBlob,hash);
+                reader.onloadend = async function () {
+                    var hash = CryptoJS.MD5(reader.result).toString().substring(0,8);
+                    console.log("Uploading image...");
+                    await uploadImage(imageBlob,hash);
                     _ide.editorManager.$scope.editor.sharejs_doc.ace.insert("\\begin{figure}[h!]\n\
 \t\\centering\n\
 \t\\includegraphics[width=0.66\\textwidth]{assets/" + hash + ".png}\n\
